@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 cmake_minimum_required(VERSION 3.20)
-project(lume VERSION 0.1.6 LANGUAGES C)   # the single source of the version (ABOUT-007)
+project(lume VERSION 0.1.7 LANGUAGES C)   # the single source of the version (ABOUT-007)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
