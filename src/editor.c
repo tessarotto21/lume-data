@@ -1153,7 +1153,7 @@ static void editor_update_body(Editor *e, App *a, Rect body, bool focused) {
         if (i - first >= 512) break;
         Rect row = rect_make(body.x, y, body.w, e->line_h);
         if (has_stmt && !e->object_mode && i >= stmt_first && i <= stmt_last) {
-            draw_rect(r, row, color_alpha(color_hex(0xFFFFFF), 6));
+            draw_rect(r, row, color_alpha(color_hex(T_TEXT), g_theme->light ? 10 : 6));
             draw_rect(r, rect_make(text.x - px(a, 10), y, px(a, 2), e->line_h), color_alpha(color_hex(T_ACCENT), 150));
         }
         if (i == e->cy && focused && !sel) draw_rect(r, row, color_alpha(color_hex(T_LINE_HL), 200));

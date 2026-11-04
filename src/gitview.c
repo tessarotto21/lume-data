@@ -666,7 +666,7 @@ void gitview_diff_body(App *a, GdDoc *d, Rect body) {
         float ry = area.y + i * lh - d->scroll;
         if (rows[i][0] <= -2) {   /* a hunk header with its actions */
             int hi = -2 - rows[i][0];
-            draw_rect(R, rect_make(area.x, ry, area.w, lh), color_hex(0x252A36));
+            draw_rect(R, rect_make(area.x, ry, area.w, lh), color_hex(T_HOVER));
             draw_text_fit(mf, R, f->h[hi].header, -1, rect_make(area.x + px(a, 8), ry, area.w - px(a, 260), lh), color_hex(T_ACCENT), ALIGN_LEFT);
             if (d->kind == GD_WORK || d->kind == GD_STAGED) {
                 char lab[48]; snprintf(lab, sizeof lab, d->kind == GD_WORK ? "Stage Hunk %d" : "Unstage Hunk %d", hi + 1);
@@ -677,7 +677,7 @@ void gitview_diff_body(App *a, GdDoc *d, Rect body) {
         if (d->side) {
             for (int s2 = 0; s2 < 2; s2++) {
                 int li = rows[i][s2]; Rect cell = rect_make(area.x + (s2 ? half : 0), ry, half, lh);
-                if (li < 0) { draw_rect(R, cell, color_hex(0x1A1C21)); continue; }
+                if (li < 0) { draw_rect(R, cell, color_hex(T_PANEL)); continue; }
                 const GitDLine *l = &d->d.l[li];
                 uint32_t bg = l->t == '-' ? 0x3B1E22 : l->t == '+' ? 0x1D3A26 : 0;
                 if (bg) draw_rect(R, cell, color_hex(bg));
@@ -907,7 +907,7 @@ static void draw_header(App *a, Rect rc, float *py) {
     draw_text_fit(a->font_small, R, ab, -1, rect_make(x + w * 0.5f + px(a, 6), y, w * 0.5f - px(a, 6), rh), color_hex(T_TEXT_MUTED), ALIGN_LEFT);
     y += rh + px(a, 4);
     if (G.state != GS_NONE) {   /* GIT-067: what the repository says is in progress, with its exits */
-        Rect bn = rect_make(rc.x, y, rc.w, rh + px(a, 6)); draw_rect(R, bn, color_hex(0x3A3220));
+        Rect bn = rect_make(rc.x, y, rc.w, rh + px(a, 6)); draw_rect(R, bn, color_hex(T_WARN_BG));
         char m[200]; snprintf(m, sizeof m, "%s in progress%s", gitc_state_name(G.state), G.conflicts ? "" : ": no conflicts left");
         if (G.conflicts) snprintf(m, sizeof m, "%s in progress: %d conflict(s) to resolve", gitc_state_name(G.state), G.conflicts);
         m[0] = (char)toupper((unsigned char)m[0]);

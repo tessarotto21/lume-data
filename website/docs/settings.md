@@ -13,6 +13,7 @@ title: Settings
 
 ## Appearance
 
+- **Theme**: Lume Dark (the default), Lume Light, Match the system (Lume Dark or Lume Light, following your operating system, also when it changes) and several other colour schemes, each shown with a swatch. The Command Palette has the same choices under "Theme:". Reports and the files you export from an ER diagram keep their own colours.
 - **Editor font size**: 90 %, 100 %, 110 %, 125 %, 150 % (also **Cmd+=**, **Cmd+-**, **Cmd+0**).
 - **Compact panel headers**.
 - **Reduce motion (no smooth scrolling or animation)**.

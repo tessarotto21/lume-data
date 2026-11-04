@@ -47,12 +47,31 @@ void settings_close(App *a) {
     LOG_I("Settings closed");
 }
 static void inv_open(void *ud, const LumeCtx *c) { (void)ud; (void)c; if (S_app) settings_open(S_app); }
+/* ---- colour themes (theme.h): applied on the next frame, saved with the other settings ---- */
+static void set_theme(App *a, const char *id) {
+    if (!theme_select(id)) return;
+    LOG_I("theme: %s%s", g_theme->name, !strcmp(id, "system") ? " (following the system)" : "");
+    if (a) app_status(a, "Theme: %s%s", g_theme->name, !strcmp(id, "system") ? " (following the system)" : "");
+}
+static void inv_theme(void *ud, const LumeCtx *c) { (void)c; set_theme(S_app, (const char *)ud); }
 void settings_init(App *a) {
     S_app = a;
     Command c; memset(&c, 0, sizeof c);
     c.id = "app.settings.open"; c.label = "Settings..."; c.group = "Lume"; c.synonyms = "preferences options configuration intelligence fetch format zoom"; c.icon = "settings";
     c.invoke = inv_open; c.module = "lume.settings";
     commands_register(&c);
+    /* one palette command per theme ("Theme: Dracula"), plus following the system */
+    static char labels[16][48];
+    for (int i = -1; i < theme_count() && i < 15; i++) {
+        const LumeTheme *t = theme_at(i);
+        Command tc; memset(&tc, 0, sizeof tc);
+        static char ids[16][48];
+        snprintf(ids[i + 1], sizeof ids[i + 1], "app.theme.%s", t ? t->id : "system");
+        snprintf(labels[i + 1], sizeof labels[i + 1], "Theme: %s", t ? t->name : "Match System");
+        tc.id = ids[i + 1]; tc.label = labels[i + 1]; tc.group = "Appearance"; tc.synonyms = "theme color colour dark light appearance palette"; tc.icon = "settings";
+        tc.invoke = inv_theme; tc.ud = (void *)(t ? t->id : "system"); tc.module = "lume.settings";
+        commands_register(&tc);
+    }
     S_event = SDL_RegisterEvents(1);
     if (S_event && macos_route_settings(S_event)) LOG_I("native application menu: Settings routed to Lume's Settings");
 }
@@ -157,8 +176,34 @@ static void sec_general(App *a, float x, float *py, float w) {
     NOTE("Workspaces (their tabs and toolbar) are chosen from the toolbar's workspace menu.");
     *py = y;
 }
+/* a theme's colours at a glance: chrome, editor, text, accent, keyword, string */
+static void theme_swatch(App *a, float x, float y, const LumeTheme *t) {
+    SDL_Renderer *r = a->renderer;
+    Rect b = rect_make(x, y + px(a, 1), px(a, 112), px(a, 20));
+    draw_rrect(r, b, px(a, 4), color_hex(T_BORDER));
+    draw_rrect(r, rect_inset(b, px(a, 1), px(a, 1)), px(a, 3), color_hex(t->panel));
+    draw_rect(r, rect_make(b.x + px(a, 28), b.y + px(a, 1), b.w - px(a, 29), b.h - px(a, 2)), color_hex(t->editor_bg));
+    const uint32_t dots[] = { t->text, t->accent, t->syn_keyword, t->syn_string, t->green };
+    for (int i = 0; i < 5; i++) draw_rrect(r, rect_make(b.x + px(a, 34 + 15 * i), b.y + px(a, 5), px(a, 10), px(a, 10)), px(a, 5), color_hex(dots[i]));
+    draw_rect(r, rect_make(b.x + px(a, 6), b.y + px(a, 5), px(a, 16), px(a, 2)), color_hex(t->text_muted));
+    draw_rect(r, rect_make(b.x + px(a, 6), b.y + px(a, 10), px(a, 12), px(a, 2)), color_hex(t->text_dim));
+}
 static void sec_appearance(App *a, float x, float *py, float w) {
     float y = *py;
+    HEAD("Theme");
+    {
+        const char *ch = theme_choice();
+        float lw = w > px(a, 300) ? w - px(a, 124) : w;
+        if (chk(a, x, &y, lw, "Match the system (Lume Dark / Lume Light)", !strcmp(ch, "system"), "settings:theme:system")) set_theme(a, "system");
+        for (int i = 0; i < theme_count(); i++) {
+            const LumeTheme *t = theme_at(i);
+            char tag[64]; snprintf(tag, sizeof tag, "settings:theme:%s", t->id);
+            float y0 = y;
+            if (chk(a, x, &y, lw, t->name, !strcmp(ch, t->id), tag)) set_theme(a, t->id);
+            if (lw < w) theme_swatch(a, x + lw + px(a, 12), y0, t);
+        }
+        NOTE("Also in the Command Palette (\"Theme: ...\"). Report colours come from the report theme (Report > Theme), not from this one.");
+    }
     HEAD("Editor font size");
     static const char *const z[] = { "90%", "100%", "110%", "125%", "150%" }; static const float zv[] = { 0.9f, 1.0f, 1.1f, 1.25f, 1.5f };
     int cur = -1; for (int i = 0; i < 5; i++) if (a->zoom > zv[i] - 0.02f && a->zoom < zv[i] + 0.02f) cur = i;
@@ -339,5 +384,5 @@ void settings_draw(App *a) {
     a->in.nkeys = 0; a->in.ntext = 0;   /* nothing below the screen takes keys this frame */
 }
 void settings_dump(void) {
-    printf("settingsstate open=%d section=%s scroll=%.0f content=%.0f\n", S.open, SEC_NAME[S.sec], S.scroll, S.content_h); fflush(stdout);
+    printf("settingsstate open=%d section=%s scroll=%.0f content=%.0f theme=%s applied=%s\n", S.open, SEC_NAME[S.sec], S.scroll, S.content_h, theme_choice(), g_theme->id); fflush(stdout);
 }

@@ -3294,7 +3294,7 @@ static void draw_head_cell(Results *r, ResultView *v, App *a, const CellCtx *cx,
     bool hot = c == head_hover || col_sel;
     bool srv = v->srv_sort[0] && strcmp(v->srv_sort, grid_col_name(g, c)) == 0;
     if (hot) draw_rect(rr, cr, color_hex(T_HOVER));
-    else if (prio || srv) draw_rect(rr, cr, color_hex(0x1F232A));
+    else if (prio || srv) draw_rect(rr, cr, color_hex(T_PANEL_ALT));
     Rect tr = rect_inset(cr, px(a, 10), 0);
     bool numeric = grid_numeric(g, c);
     if (prio || srv) {
@@ -3900,7 +3900,7 @@ static void results_update_body(Results *r, App *a, Rect b) {
         draw_text_fit(a->font_ui, rr, grid_col_name(g, v->drag_col), -1, rect_inset(ghost, px(a, 10), 0), color_hex(T_TEXT), ALIGN_LEFT);
     }
     draw_rect(rr, rect_make(body.x, body.y + head_h - px(a, 1), body.w, px(a, 1)), color_hex(T_BORDER));
-    if (frozen) draw_rect(rr, rect_make(cells_rc.x + r->frozen_w - px(a, 2), body.y, px(a, 2), body.h), color_hex(0x4A5160));   /* freeze divider, header included */
+    if (frozen) draw_rect(rr, rect_make(cells_rc.x + r->frozen_w - px(a, 2), body.y, px(a, 2), body.h), color_hex(T_SCROLLBAR));   /* freeze divider, header included */
 
     /* Scrollbars */
     ui_scrollbar_draw(a, &v->sb, cells_rc, total_h, v->scroll_y);

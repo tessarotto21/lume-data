@@ -1129,8 +1129,8 @@ static void draw_tree(App *a, TdDoc *d, Rect r) {
         char tag[340]; snprintf(tag, sizeof tag, "tdrow:%s", w->label); ui_record(tag, rr);
         if (w->kind == 6) {   /* a button inside the tree's flow: the groups below move down for it */
             Rect b = rect_make(rr.x + px(a, 30), rr.y + px(a, 2), fminf(px(a, 190), rr.w - px(a, 40)), rr.h - px(a, 4));
-            draw_rrect(R, b, px(a, M_RADIUS), color_hex(i == hover ? 0x6E9CF2 : T_ACCENT));
-            draw_text_fit(a->font_ui, R, "+  Add the first column", -1, b, color_hex(0xFFFFFF), ALIGN_CENTER);
+            draw_rrect(R, b, px(a, M_RADIUS), color_hex(i == hover ? T_ACCENT_HOVER : T_ACCENT));
+            draw_text_fit(a->font_ui, R, "+  Add the first column", -1, b, color_hex(T_ON_ACCENT), ALIGN_CENTER);
             if (i == hover) a->want_cursor = CURSOR_HAND;
             continue;
         }

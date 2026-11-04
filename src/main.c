@@ -616,6 +616,7 @@ static void handle_event(App *a, SDL_Event *e) {
     if (a->panels && panels_handle_event(a->panels, a, e)) return;   /* layout export / import dialogs */
     switch (e->type) {
     case SDL_EVENT_QUIT: a->running = false; break;
+    case SDL_EVENT_SYSTEM_THEME_CHANGED: if (theme_follow_system()) LOG_I("theme: the system appearance changed, now %s", g_theme->name); break;
     case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
     case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:
     case SDL_EVENT_WINDOW_RESIZED:
@@ -763,6 +764,7 @@ static void app_prefs_load(App *a) {
         else if (!strcmp(line, "git_timeout_min") && v >= 1 && v <= 120) a->git_timeout_min = v;
         else if (!strcmp(line, "git_clone_min") && v >= 1 && v <= 1440) a->git_clone_min = v;
         else if (!strcmp(line, "catalog_session")) a->catalog_session = v != 0;
+        else if (!strcmp(line, "theme")) { if (!theme_select(eq)) LOG_W("settings: unknown theme \"%.40s\", keeping %s", eq, theme_choice()); }
         else if (!strcmp(line, "report_locale") && (!strcmp(eq, "pt-BR") || !strcmp(eq, "en-US"))) snprintf(a->report_locale, sizeof a->report_locale, "%s", eq);
     }
     fclose(f);
@@ -776,8 +778,8 @@ static void app_apply_timeouts(const App *a) {
     gitview_set_timeouts(a->git_timeout_min * 60 * 1000, a->git_clone_min * 60 * 1000);
 }
 static unsigned prefs_sig(const App *a) {
-    char b[320]; snprintf(b, sizeof b, "%d|%d|%d|%.2f|%d|%d|%d|%d|%s|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d", a->fetch_size, a->continue_on_error, a->results_budget_mb, a->zoom, a->fmt_group, a->fmt_decimals, a->fmt_date, a->fmt_tz, a->report_locale, a->telemetry, a->crash_reports, a->update_check,
-                             a->query_timeout_s, a->connect_timeout_s, a->ssh_timeout_s, a->explorer_timeout_s, a->explorer_list_min, a->report_timeout_s, a->git_timeout_min, a->git_clone_min, a->catalog_session);
+    char b[360]; snprintf(b, sizeof b, "%d|%d|%d|%.2f|%d|%d|%d|%d|%s|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%s", a->fetch_size, a->continue_on_error, a->results_budget_mb, a->zoom, a->fmt_group, a->fmt_decimals, a->fmt_date, a->fmt_tz, a->report_locale, a->telemetry, a->crash_reports, a->update_check,
+                             a->query_timeout_s, a->connect_timeout_s, a->ssh_timeout_s, a->explorer_timeout_s, a->explorer_list_min, a->report_timeout_s, a->git_timeout_min, a->git_clone_min, a->catalog_session, theme_choice());
     unsigned h = 2166136261u; for (const char *q = b; *q; q++) { h ^= (unsigned char)*q; h *= 16777619u; } return h;
 }
 static unsigned g_prefs_sig; static bool g_prefs_loaded;
@@ -791,6 +793,7 @@ void app_prefs_save(App *a) {
     fprintf(f, "query_timeout_s=%d\nconnect_timeout_s=%d\nssh_timeout_s=%d\nexplorer_timeout_s=%d\nexplorer_list_min=%d\nreport_timeout_s=%d\ngit_timeout_min=%d\ngit_clone_min=%d\n",
             a->query_timeout_s, a->connect_timeout_s, a->ssh_timeout_s, a->explorer_timeout_s, a->explorer_list_min, a->report_timeout_s, a->git_timeout_min, a->git_clone_min);
     fprintf(f, "catalog_session=%d\n", a->catalog_session ? 1 : 0);
+    fprintf(f, "theme=%s\n", theme_choice());
     fclose(f); rename(tmp, p);
     g_prefs_sig = prefs_sig(a);
     app_apply_timeouts(a);

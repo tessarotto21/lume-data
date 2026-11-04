@@ -12,11 +12,18 @@
 
 #define C(h) color_hex(h)
 static const uint32_t TAGC[9] = { 0, 0x5B8DEF, 0x5FD39B, 0xF2994A, 0xB98AF0, 0x4FC3D9, 0xF27DB0, 0xE8C266, 0x9AA3B0 };
-/* colours of an export in the light theme (the app itself is dark) */
+/* DARKP and LIGHTP: the fixed colours of a dark / light export, whatever theme the app is using.
+ * DARKP is also the screen in Lume Dark; any other theme draws with its own colours (screen_pal). */
 typedef struct { uint32_t bg, card, head, border, text, muted, line, virt, accent, sel, grid; } Pal;
-static const Pal DARKP = { T_EDITOR_BG, 0x20232A, 0x272B33, 0x343944, T_TEXT, T_TEXT_MUTED, 0x7C8596, 0xE0A040, T_ACCENT, T_ACCENT, 0x23262D };
+static const Pal DARKP = { 0x1B1E24, 0x20232A, 0x272B33, 0x343944, 0xD9DDE4, 0x9AA3B0, 0x7C8596, 0xE0A040, 0x5B8DEF, 0x5B8DEF, 0x23262D };
 static const Pal LIGHTP = { 0xFAFBFC, 0xFFFFFF, 0xEEF1F6, 0xC9CFD8, 0x1D2330, 0x5D6676, 0x6B7486, 0xB46A00, 0x3B6FD8, 0x3B6FD8, 0xF0F2F5 };
 static const Pal *P = &DARKP;
+static Pal SCREENP;
+static const Pal *screen_pal(void) {
+    if (!strcmp(g_theme->id, "lume-dark")) return &DARKP;
+    SCREENP = (Pal){ T_EDITOR_BG, T_PANEL, T_PANEL_ALT, T_BORDER, T_TEXT, T_TEXT_MUTED, T_TEXT_DIM, T_YELLOW, T_ACCENT, T_ACCENT, T_LINE_HL };
+    return &SCREENP;
+}
 
 /* ---------------------------------------------------------------- primitives in world units */
 static void dashed(SDL_Renderer *R, float x1, float y1, float x2, float y2, float th, Color c, float on, float off) {
@@ -97,7 +104,7 @@ static void draw_card(App *a, DgDoc *d, int i, Font *fh, Font *fr, float k) {
         float bwid = font_width(fr, badge, -1) + 10 * k; Rect br = rect_make(right - bwid, iy - 8 * k, bwid, 16 * k);
         bool hov = d->hover == i && d->hover_more;
         draw_rrect(R, br, 8 * k, color_alpha(C(hov ? P->accent : P->border), al));
-        draw_text_fit(fr, R, badge, -1, br, color_alpha(C(hov ? 0xFFFFFF : P->muted), al), 1);
+        draw_text_fit(fr, R, badge, -1, br, color_alpha(C(hov ? T_ON_ACCENT : P->muted), al), 1);
         right = br.x - 6 * k;
     }
     if (n->status && k > 0.3f) { const char *st = n->status == DS_CHANGED ? "changed" : n->status == DS_MISSING ? "missing" : "new"; float w = font_width(fr, st, -1) + 8 * k; draw_text_fit(fr, R, st, -1, rect_make(right - w, rc.y, w, head.h), color_alpha(C(n->status == DS_MISSING ? T_RED : T_YELLOW), al), 1); right -= w + 4 * k; }
@@ -297,7 +304,7 @@ void dg_canvas(App *a, DgDoc *d, Rect r) {
     SDL_Renderer *R = a->renderer; Input *in = &a->in;
     Uint64 t0 = SDL_GetPerformanceCounter();
     d->canvas = r;
-    P = &DARKP;
+    P = screen_pal();
     if (d->need_fit && d->d.nn && !d->lay_th) dg_fit(a, d, false);
     bool over = rect_contains(r, in->mouse_x, in->mouse_y) && !d->dlg && !d->cm.open;
     /* the find list is drawn above the canvas later in this frame: its rect from the previous frame */

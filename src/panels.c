@@ -1789,7 +1789,7 @@ static void draw_editor_group(Panels *P, App *a, int eg, Rect rc) {
             if (a->editor == at->ed && input_key(&a->in, SDLK_S, SDL_KMOD_GUI)) save_tab(P, a, at);
             if (at->disk_changed) {   /* the disk changed under unsaved edits: the user decides (GIT-017) */
                 float bh = px(a, 30); Rect bn = rect_make(body.x, body.y, body.w, bh);
-                draw_rect(a->renderer, bn, color_hex(0x3A3220));
+                draw_rect(a->renderer, bn, color_hex(T_WARN_BG));
                 char m[1200]; snprintf(m, sizeof m, "%s changed on disk while you have unsaved edits.", at->title);
                 draw_text_fit(a->font_small, a->renderer, m, -1, rect_make(bn.x + px(a, 10), bn.y, bn.w - px(a, 390), bh), color_hex(T_YELLOW), ALIGN_LEFT);
                 float bx = bn.x + bn.w - px(a, 380);
@@ -2011,7 +2011,7 @@ static void draw_drag(Panels *P, App *a) {
             float w = font_width(a->font_small, lbl, -1) + px(a, 20);
             Rect chip = rect_make(pv.x + (pv.w - w) / 2, pv.y + (pv.h - px(a, 24)) / 2, w, px(a, 24));
             draw_rrect(r, chip, px(a, 5), color_hex(T_ACCENT));
-            draw_text_fit(a->font_small, r, lbl, -1, chip, color_hex(0xFFFFFF), ALIGN_CENTER);
+            draw_text_fit(a->font_small, r, lbl, -1, chip, color_hex(T_ON_ACCENT), ALIGN_CENTER);
         }
         /* what is being moved, named so a panel drag is never confused with an editor tab (PNL-028) */
         char g[96]; snprintf(g, sizeof g, "Panel: %s  \xC2\xB7  Esc cancels", P->dock.desc[P->dpanel].title);
@@ -2469,7 +2469,7 @@ void panels_draw_overlay(Panels *P, App *a) {
         if (y + px(a, 26) > a->height) y = P->tt_rect.y - px(a, 30);
         Rect tr = rect_make(x, y, w, px(a, 26));
         draw_rrect(r, tr, px(a, 5), color_hex(T_BORDER));
-        draw_rrect(r, rect_inset(tr, px(a, 1), px(a, 1)), px(a, 4), color_hex(0x2B2F38));
+        draw_rrect(r, rect_inset(tr, px(a, 1), px(a, 1)), px(a, 4), color_hex(T_PANEL_ALT));
         draw_text_fit(a->font_small, r, P->tt_text, -1, tr, color_hex(T_TEXT), ALIGN_CENTER);
     }
 }

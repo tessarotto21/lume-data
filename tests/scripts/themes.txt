@@ -1,0 +1,52 @@
+# Colour themes: Settings > Appearance > Theme, the Command Palette, Match the system
+wait 300
+shot __OUT__/main_lume-dark.bmp
+key cmd+,
+wait 60
+clickon "settings:sec Appearance"
+wait 30
+settingsstate
+shot __OUT__/settings_lume-dark.bmp
+clickon "settings:theme:dracula"
+wait 30
+settingsstate
+shot __OUT__/settings_dracula.bmp
+key escape
+wait 30
+shot __OUT__/main_dracula.bmp
+invoke app.theme.lume-light
+wait 30
+settingsstate
+shot __OUT__/main_lume-light.bmp
+invoke app.theme.one-dark
+wait 20
+shot __OUT__/main_one-dark.bmp
+invoke app.theme.nord
+wait 20
+shot __OUT__/main_nord.bmp
+invoke app.theme.solarized-dark
+wait 20
+shot __OUT__/main_solarized-dark.bmp
+invoke app.theme.solarized-light
+wait 20
+shot __OUT__/main_solarized-light.bmp
+key cmd+,
+wait 60
+clickon "settings:sec Appearance"
+wait 30
+shot __OUT__/settings_solarized-light.bmp
+clickon "settings:theme:system"
+wait 30
+settingsstate
+key escape
+wait 30
+invoke app.theme.lume-dark
+wait 20
+dgm open rpt_sales "Shop"
+dgmawait
+wait 30
+shot __OUT__/dgm_lume-dark.bmp
+invoke app.theme.lume-light
+wait 30
+shot __OUT__/dgm_lume-light.bmp
+quit

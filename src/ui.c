@@ -441,8 +441,8 @@ bool ui_button(App *a, Rect rc, const char *label, int style, bool enabled) {
     if (hover) a->want_cursor = CURSOR_HAND;
     Color fill, text;
     switch (style) {
-    case BTN_PRIMARY: fill = color_hex(hover ? 0x6E9CF2 : T_ACCENT); text = color_hex(0xFFFFFF); break;
-    case BTN_DANGER: fill = color_hex(hover ? 0x5A2A2A : 0x3E2424); text = color_hex(T_RED); break;
+    case BTN_PRIMARY: fill = color_hex(hover ? T_ACCENT_HOVER : T_ACCENT); text = color_hex(T_ON_ACCENT); break;
+    case BTN_DANGER: fill = color_alpha(color_hex(T_RED), hover ? 70 : 45); text = color_hex(T_RED); break;
     /* QUIET is a ghost button: a faint outline at rest (so it reads as clickable, not as text), filled on hover */
     case BTN_QUIET: fill = color_alpha(color_hex(T_HOVER), hover ? 255 : 0); text = color_hex(hover ? T_TEXT : T_TEXT_MUTED); break;
     case BTN_SELECTED: fill = color_hex(hover ? 0x324670 : T_SELECTED); text = color_hex(T_TEXT); break;

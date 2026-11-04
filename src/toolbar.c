@@ -930,10 +930,10 @@ static void draw_slot(Toolbar *t, App *a, int s, const LumeCtx *c, bool hov, boo
     bool open = (t->menu.open && t->menu_item == sl->item) || (t->ds_open && it->kind == IK_DATASOURCE);
     Color text = color_hex(en ? T_TEXT : T_TEXT_DIM);
     /* background: Run is the primary action; hover / open / pressed states */
-    if (it->kind == IK_RUN && en && !c->running) draw_rrect(r, sl->r, px(a, M_RADIUS), color_hex(hov ? 0x6E9CF2 : T_ACCENT));
-    else if (it->kind == IK_STOP) draw_rrect(r, sl->r, px(a, M_RADIUS), color_hex(hov ? 0x5A2A2A : 0x3E2424));
+    if (it->kind == IK_RUN && en && !c->running) draw_rrect(r, sl->r, px(a, M_RADIUS), color_hex(hov ? T_ACCENT_HOVER : T_ACCENT));
+    else if (it->kind == IK_STOP) draw_rrect(r, sl->r, px(a, M_RADIUS), color_alpha(color_hex(T_RED), hov ? 70 : 45));
     else if (hov || open) draw_rrect(r, sl->r, px(a, M_RADIUS), color_hex(T_HOVER));
-    if (it->kind == IK_RUN && en && !c->running) text = color_hex(0xFFFFFF);
+    if (it->kind == IK_RUN && en && !c->running) text = color_hex(T_ON_ACCENT);
     if (it->kind == IK_STOP) text = color_hex(T_RED);
     if (it->kind == IK_RUN && c->running) draw_rrect(r, sl->r, px(a, M_RADIUS), color_alpha(color_hex(T_ACCENT), 50));
     float pad = px(a, t->prefs.compact ? 6 : 8), x = sl->r.x + pad, cy = sl->r.y + sl->r.h / 2, isz = px(a, 15);

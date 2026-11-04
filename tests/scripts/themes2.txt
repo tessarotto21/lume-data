@@ -1,0 +1,6 @@
+# next launch: the theme chosen last time is back
+wait 200
+key cmd+,
+wait 60
+settingsstate
+quit
