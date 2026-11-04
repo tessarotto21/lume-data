@@ -34,9 +34,11 @@ With **Read-only in Lume** checked, Lume refuses to run writes on the connection
 - set as the session's default where the server supports it (PostgreSQL);
 - otherwise checked by Lume before sending.
 
+When Lume checks before sending, it reads the statement's first keyword, and for `WITH` queries it looks for `INSERT`, `UPDATE`, `DELETE` or `MERGE` used as SQL. Words inside strings, quoted names and comments do not count, so a query that only lists `'...:UPDATE'` as text runs normally. The check is cautious: when in doubt, it treats the statement as a write.
+
 The database login is not changed. For the strongest protection, also use a login that only has read permissions.
 
-When a write is refused, the **Output** says who refused it: Lume's read-only setting, the server's privileges, or a read-only setting on the server.
+When a write is refused, the **Output** says who refused it: Lume's read-only setting, the server's privileges, or a read-only setting on the server. A statement Lume refuses before sending it also appears there, as a **skipped** execution with the SQL and the reason, so the message stays after the status bar changes.
 
 ## Settings that always apply
 

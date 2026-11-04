@@ -39,6 +39,25 @@ int main(void) {
         { "WITH d AS (DELETE FROM t RETURNING *) SELECT * FROM d", true }, { "UPDATE t SET a = 1", true },
         { "delete from t", true }, { "DROP TABLE t", true }, { "CREATE TABLE t(a int)", true }, { "CALL p()", true },
         { "BEGIN", true }, { "selectx FROM t", true }, { "SHOW search_path", false }, { "VALUES (1)", false },
+        /* WITH: DML words inside strings, quoted identifiers and comments are not SQL */
+        { "WITH e AS (SELECT column_value AS k FROM TABLE(sys.odcivarchar2list('APP.T:SELECT','APP.T.C:UPDATE','APP.LOG:INSERT','APP.P:EXECUTE','SYS:CREATE SESSION'))) SELECT * FROM e", false },
+        { "WITH e AS (SELECT 'x:DELETE' AS a, 'y:MERGE' AS b FROM dual) SELECT * FROM e", false },
+        { "WITH \"UPDATE\" AS (SELECT 1 AS a) SELECT * FROM \"UPDATE\"", false },
+        { "WITH x AS (SELECT 1 /* then UPDATE t */ AS a) SELECT * FROM x", false },
+        { "WITH x AS (SELECT 1 AS a) -- an INSERT comes later\nSELECT * FROM x", false },
+        { "WITH x AS (SELECT 'it''s an UPDATE' AS a) SELECT * FROM x", false },
+        /* ... but a construct one engine reads as a string never hides SQL another engine runs */
+        { "WITH x AS (SELECT 1) UPDATE t SET a = 1", true },
+        { "WITH x AS (SELECT 1 AS [it's]) UPDATE t SET a = 1", true },              /* SQL Server bracket identifier */
+        { "WITH x AS (SELECT 'a\\'' AS s) UPDATE t SET a = 1", true },              /* MySQL backslash escape */
+        { "WITH x AS (SELECT 'a\\' AS s) UPDATE t SET a = 1 WHERE b = 'c'", true }, /* standard: the backslash is a character */
+        { "WITH x AS (SELECT $$it's$$ AS s) DELETE FROM t", true },                 /* PostgreSQL dollar quoting */
+        { "WITH x AS (SELECT q'[it's]' AS s FROM dual) SELECT 1 FROM x WHERE 'a' = 'b' UNION SELECT 1 FROM x; DELETE FROM t", true },
+        { "WITH x AS (SELECT 1 # it's\n) UPDATE t SET a = 1", true },               /* MySQL hash comment */
+        { "WITH x AS (SELECT 1 AS a) /*!UPDATE t SET a = 1*/ SELECT * FROM x", true },   /* MySQL runs this comment */
+        { "WITH x AS (SELECT 5--1 AS v) UPDATE t SET a = 1", true },                /* MySQL: 5 - -1, not a comment */
+        { "/*!UPDATE t SET a = 1*/ SELECT 1", true },
+        { "WITHX AS (SELECT 1) SELECT 1", true },
     };
     int ok = 0, n = (int)(sizeof cases / sizeof cases[0]);
     for (int i = 0; i < n; i++) {

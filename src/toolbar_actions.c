@@ -121,6 +121,17 @@ static void execute(Toolbar *t, App *a, TbRun *r) {
     tba_run_free(r);
 }
 
+/* Lume's read-only check refused a run: the reason goes to the status bar and, so it does not
+ * vanish with the next status, to the Output as a skipped execution. With parameters the
+ * Output shows the template (r->display), never the substituted values. */
+static void refuse_read_only(App *a, const LumeCtx *c, const TbRun *r) {
+    char why[400];
+    snprintf(why, sizeof why, "Not run: %s is read-only in Lume and this SQL may write (%s)", c->conn_name, caps_ro_text(RO_LUME_CHECK));
+    app_status_bar(a, "%s", why);   /* output_refused records it: no second note */
+    output_refused(a->output, a, ctx_conn(a), r->display ? r->display : r->sql, r->display ? -1 : r->len, why);
+    LOG_I("run refused by Lume's read-only check on %s", c->conn_name);
+}
+
 /* Prepares a run from the editor: source, safety checks, then executes or asks. */
 static void start_run(Toolbar *t, App *a, int src, int mode, bool allow_partial) {
     commands_frame(a);
@@ -147,11 +158,7 @@ static void start_run(Toolbar *t, App *a, int src, int mode, bool allow_partial)
     SqlStmt parts[256]; int np = sql_split(r.sql, r.len, SQL_DIALECT_GENERIC, parts, 256);
     bool writes = false;
     for (int i = 0; i < np && !writes; i++) writes = caps_sql_may_write(r.sql + parts[i].start, parts[i].end - parts[i].start);
-    if (c->read_only && writes && c->ro_level == RO_LUME_CHECK) {
-        app_status(a, "Not run: %s is read-only in Lume and this SQL may write (%s)", c->conn_name, caps_ro_text(RO_LUME_CHECK));
-        LOG_I("run refused by Lume's read-only check on %s", c->conn_name);
-        tba_run_free(&r); return;
-    }
+    if (c->read_only && writes && c->ro_level == RO_LUME_CHECK) { refuse_read_only(a, c, &r); tba_run_free(&r); return; }
     if (c->env == CONN_ENV_PROD && (writes || np > 1)) {
         char tg[200]; target_text(a, c, tg, sizeof tg);
         char body[700], snip[160]; snprintf(snip, sizeof snip, "%.*s", r.len > 140 ? 140 : r.len, r.sql);
@@ -291,7 +298,7 @@ static void params_run(Toolbar *t, App *a) {
     /* same safety rules as Run */
     const LumeCtx *c = commands_ctx();
     bool writes = caps_sql_may_write(run.sql, run.len);
-    if (c->read_only && writes && c->ro_level == RO_LUME_CHECK) { app_status(a, "Not run: %s is read-only in Lume and this SQL may write", c->conn_name); tba_run_free(&run); return; }
+    if (c->read_only && writes && c->ro_level == RO_LUME_CHECK) { refuse_read_only(a, c, &run); tba_run_free(&run); return; }
     if (c->env == CONN_ENV_PROD && writes) { t->run = run; char tg[200]; target_text(a, c, tg, sizeof tg); char body[400]; snprintf(body, sizeof body, "Target: %s\nThis SQL may change data or schema.", tg); tba_confirm(t, CF_RUN, "Run on PROD?", body, "Run on PROD", "Cancel", NULL, ""); return; }
     execute(t, a, &run);
 }

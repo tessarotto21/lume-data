@@ -1,7 +1,9 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Driver capabilities and read-only enforcement: see caps.h. UI thread only. */
 #include "caps.h"
+#include "sqllex.h"
 #include <ctype.h>
+#include <stdlib.h>
 #include <strings.h>
 #include "conn.h"
 #include "db.h"
@@ -86,9 +88,46 @@ static const char *first_word(const char *s, const char *end) {
     for (;;) {
         while (s < end && isspace((unsigned char)*s)) s++;
         if (s + 1 < end && s[0] == '-' && s[1] == '-') { while (s < end && *s != '\n') s++; continue; }
-        if (s + 1 < end && s[0] == '/' && s[1] == '*') { const char *e = s + 2; while (e + 1 < end && !(e[0] == '*' && e[1] == '/')) e++; s = e + 2 < end ? e + 2 : end; continue; }
+        if (s + 1 < end && s[0] == '/' && s[1] == '*' && !(s + 2 < end && s[2] == '!')) {   /* slash-star-bang is run by MySQL: not skipped */ const char *e = s + 2; while (e + 1 < end && !(e[0] == '*' && e[1] == '/')) e++; s = e + 2 < end ? e + 2 : end; continue; }
         return s;
     }
+}
+
+static const char *const dml_words[] = { "INSERT", "UPDATE", "DELETE", "MERGE", NULL };
+
+/* A DML keyword anywhere in raw text (word boundaries only): the old, quote-blind scan. */
+static bool raw_has_dml(const char *s, const char *end) {
+    for (const char *p = s; p < end; p++)
+        for (int i = 0; dml_words[i]; i++) {
+            size_t n = strlen(dml_words[i]);
+            if ((size_t)(end - p) >= n && !strncasecmp(p, dml_words[i], n) && (p == s || !isalnum((unsigned char)p[-1])) && (p + n == end || !isalnum((unsigned char)p[n]))) return true;
+        }
+    return false;
+}
+
+/* A WITH statement writes when a DML keyword appears as SQL, not inside a string, quoted
+ * identifier or comment. Lume does not know here which engine runs it, so the text is lexed
+ * with every built-in dialect and any dialect that sees a DML keyword makes it a write: a
+ * construct one engine reads as a string can never hide a statement another engine would run.
+ * Two MySQL forms the lexer reads as comments are still scanned: an executable comment
+ * (slash-star-bang, run by the server) and a double dash not followed by a space (arithmetic in MySQL). */
+static bool with_may_write(const char *w, const char *end) {
+    int len = (int)(end - w);
+    SqlTok *tk = malloc(((size_t)len + 1) * sizeof *tk);
+    if (!tk) return true;
+    bool writes = false;
+    for (int d = 0; d < DIALECT_COUNT && !writes; d++) {
+        int n = sql_lex(w, len, d, tk, len + 1);
+        if (n > len) { writes = true; break; }   /* cut: cannot happen (a token is at least one byte), stay conservative */
+        for (int i = 0; i < n && !writes; i++) {
+            const char *s = w + tk[i].off, *e = s + tk[i].len;
+            if (tk[i].kind == TK_WORD) { for (int k = 0; dml_words[k]; k++) if (tok_is(w, &tk[i], dml_words[k])) { writes = true; break; } }
+            else if (tk[i].kind == TK_COMMENT && tk[i].len >= 3 && ((s[0] == '/' && s[1] == '*' && s[2] == '!') || (s[0] == '-' && s[1] == '-' && !isspace((unsigned char)s[2]))))
+                writes = raw_has_dml(s, e);
+        }
+    }
+    free(tk);
+    return writes;
 }
 
 bool caps_sql_may_write(const char *sql, int len) {
@@ -105,12 +144,8 @@ bool caps_sql_may_write(const char *sql, int len) {
             return false;
         }
     }
-    if ((size_t)(end - w) >= 4 && !strncasecmp(w, "WITH", 4)) {   /* WITH ... DELETE / UPDATE / INSERT */
-        static const char *dml[] = { "INSERT", "UPDATE", "DELETE", "MERGE", NULL };
-        for (const char *p = w; p < end; p++)
-            for (int i = 0; dml[i]; i++) { size_t n = strlen(dml[i]); if ((size_t)(end - p) >= n && !strncasecmp(p, dml[i], n) && (p == w || !isalnum((unsigned char)p[-1])) && (p + n == end || !isalnum((unsigned char)p[n]))) return true; }
-        return false;
-    }
+    if ((size_t)(end - w) >= 4 && !strncasecmp(w, "WITH", 4) && (w + 4 == end || !isalnum((unsigned char)w[4])))
+        return with_may_write(w, end);   /* WITH ... DELETE / UPDATE / INSERT / MERGE */
     return w < end;   /* anything else (DML, DDL, CALL, BEGIN ... ) may write */
 }
 

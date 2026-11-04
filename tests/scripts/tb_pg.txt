@@ -114,6 +114,8 @@ tbstate
 tbmodal
 button "Close"
 wait 60
+outnotes "bad port"
+outnotes "syn A"
 button "tb:datasource"
 wait 150
 type "slow host"

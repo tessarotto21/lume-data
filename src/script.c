@@ -290,6 +290,20 @@ void script_tick(App *a) {
         if (!objcat_settled(a) && now < odeadline) { cur--; next_at = now + 100; }
         else { if (!objcat_settled(a)) { printf("script: target not found: objcatawait timed out\n"); fflush(stdout); } odeadline = 0; }
     }
+    else if (!strcmp(cmd, "outawait")) {   /* repeat until no execution is running in any session (or the deadline) */
+        static Uint64 odeadline; int ms = atoi(arg);
+        if (!odeadline) odeadline = now + (Uint64)(ms > 0 ? ms : 60000);
+        if (output_job_running(a->output) && now < odeadline) { cur--; next_at = now + 50; }
+        else { if (output_job_running(a->output)) { printf("script: target not found: outawait timed out\n"); fflush(stdout); } odeadline = 0; }
+    }
+    else if (!strcmp(cmd, "outexport")) output_export(a->output, a, arg);   /* outexport PATH: the active session's Output (.json or text) */
+    else if (!strcmp(cmd, "outnotes")) {   /* outnotes "connection": that session's notes (no name: the active session) */
+        char cn[64] = ""; sscanf(arg, "\"%63[^\"]\"", cn);
+        Connection *nc = NULL;
+        for (int i = 0; cn[0] && a->conns && i < a->conns->n; i++) if (!strcmp(a->conns->items[i]->name, cn)) nc = a->conns->items[i];
+        if (cn[0] && !nc) { printf("script: target not found: outnotes %s\n", arg); fflush(stdout); }
+        else output_notes_dump(a->output, a, nc);
+    }
     else if (!strcmp(cmd, "fetchawait")) {   /* repeat until no Fetch more / Fetch all is running (or the deadline) */
         static Uint64 fdeadline; int ms = atoi(arg);
         if (!fdeadline) fdeadline = now + (Uint64)(ms > 0 ? ms : 60000);

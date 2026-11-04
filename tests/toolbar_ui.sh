@@ -129,6 +129,21 @@ out=$(run $P tb_ro); L=$P/logs/lume.log
 expect "TBR-013: SQLite read-only is enforced by the engine (the write fails)" 'grep -q "attempt to write a readonly database" $L && grep -q "RO file is read-only in Lume (engine)" $L'
 expect "TBR-013: the tooltip states the real level of protection" 'nth "$out" 1 | grep -q "Read-only in Lume, enfor"'
 
+# ---- read-only in Lume, Lume-check level (Oracle, TBR-029): strings are not SQL; a refusal reaches the Output
+OENV="${LUME_ORA_ENV:-$HOME/workspace/tessarotto/test-servers/.env}"
+if [ -z "$LUME_SKIP_ORACLE" ] && docker ps --format '{{.Names}}' | grep -qx dbv-oracle && [ -f "$OENV" ] && [ -e "$HOME/oracle/instantclient/libclntsh.dylib" ]; then
+  P=build/tb-ro-ora; rm -rf $P; mkdir -p $P
+  OPW=$(grep '^ORACLE_PASSWORD=' "$OENV" | cut -d= -f2- | tr -d '"')
+  printf '[connection]\nid=orar\nname=ora RO\ndriver=oracle\nhost=localhost\nport=15210\nservice=FREEPDB1\nuser=system\nenv=DEV\nread_only=1\n' > $P/connections.txt
+  ( umask 077; printf 'orar\tpassword\t%s\n' "$OPW" > $P/secrets.txt )
+  out=$(run $P tb_ro_ora); L=$P/logs/lume.log; O=$P/output.txt
+  expect "every script target found (Oracle read-only)" '[ "$(missing "$out")" = 0 ]'
+  expect "TBR-029: a read whose strings hold DML words is not refused (only the write is)" '[ "$(grep -c "Not run: ora RO is read-only in Lume" $O)" = 1 ] && [ "$(grep -c "run refused by Lume.s read-only check" $L)" = 1 ]'
+  expect "TBR-029: that read ran and completed on Oracle" 'grep -q "type: statement_completed  execution: #1" $O && grep -q "success  1 of 1 statement ok" $O'
+  expect "TBR-029: the write is refused before anything is sent" 'grep -q "run refused by Lume.s read-only check on ora RO" $L && ! grep -qi "ORA-00942" $O'
+  expect "TBR-029: the refusal stays in the Output as a skipped execution with the reason" 'grep -q "sql: UPDATE lume_ro_probe SET a = 1" $O && grep -q "warning  Not run: ora RO is read-only in Lume and this SQL may write (Read-only in Lume as a check" $O && grep -q "warning  0 of 1 statement ok · 0 failed · 1 not run" $O'
+else echo "skip  Oracle read-only scenario: dbv-oracle / Instant Client not available"; fi
+
 # ---- rendering cost and idle (TBR-046)
 P=build/tb-perf; sq_setup $P
 frames=$(run $P tb_perf | awk '/^stat op/ { print $4 + 0 }' | sort -n)
@@ -167,6 +182,11 @@ if docker exec dbv-postgres true 2>/dev/null && [ -f "$ENV_FILE" ]; then
   expect "TBR-027: Rollback is confirmed and ends the transaction" 'nth "$out" 9 | grep -q "tx=0" && grep -q "Rollback of the session" $L'
   expect "TBR-012: Reconnect with an open transaction reports it lost (never committed)" 'grep -q "an open transaction was dropped with the old session" $L'
   expect "TBR-014 / 029: on PROD a write asks first with the target; Cancel runs nothing; a read runs" 'nth "$out" 12 | grep -q "ds=\"syn PROD\".*" && grep -q "Cancelled: nothing was run" $L && grep -q "Run: lines 1-1 on syn PROD" $L'
+  sum_bad=$(printf '%s\n' "$out" | grep '^outnotes .* in bad port ')
+  sum_a=$(printf '%s\n' "$out" | grep '^outnotes .* in syn A ')
+  expect "OUT: the failed connect is kept in that connection's Output as an error, after the Connecting note" 'printf "%s\n" "$out" | grep -q "^outnote info Connecting to bad port" && printf "%s\n" "$out" | grep -q "^outnote error bad port: " && [ -n "$sum_bad" ]'
+  expect "OUT: the error badges that session's Output; it does not land in another session" 'printf "%s\n" "$sum_bad" | grep -qE "unseen warnings/errors: [1-9]" && [ -n "$sum_a" ] && ! printf "%s\n" "$out" | sed -n "/^outnotes .* in bad port /,/^outnotes .* in syn A /p" | grep -q "^outnote error bad port"'
+  expect "OUT: notes never hold the password" '! printf "%s\n" "$out" | grep "^outnote" | grep -qF "$PW"'
   expect "TBR-011: a failed connect shows failed and the reason (no password)" 'nth "$out" 13 | grep -q "state=failed" && grep -q "connect failed: bad port" $L && ! grep -qF "$PW" $L $P/history.tsv $P/toolbar.json'
   expect "TBR-011 / 045: connecting shows the state while the UI keeps drawing frames; Cancel Connect stops it" 'nth "$out" 14 | grep -q "state=connecting" && printf "%s\n" "$out" | grep "^stat connecting" | awk "{ exit !(\$4 + 0 < 16) }" && nth "$out" 15 | grep -q "state=disconnected"'
   expect "TBR-022: EXPLAIN ANALYZE warns that it executes the statement" 'printf "%s\n" "$out" | grep -q "^tbmodal kind=1 title=\"Run EXPLAIN ANALYZE?\" body=\"EXPLAIN ANALYZE executes the statement"'

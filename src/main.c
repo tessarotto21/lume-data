@@ -105,17 +105,52 @@ static unsigned normalize_mods(SDL_Keymod m) {
 
 /* ---- app services ------------------------------------------------------ */
 
-/* Shows a message in the status bar for 6 s and records it in the application log: what the
- * user saw is what the log says. Messages about failures are logged as warnings. */
+/* The level of a status message that did not state one: failures are errors, things Lume did
+ * not do (refused, not run, cancelled, timed out) are warnings, the rest is information. */
+static int status_level(const char *s) {
+    static const char *const err[] = { "failed", "error", "cannot", "could not", "unable to", NULL };
+    static const char *const warn[] = { "not run", "refused", "timed out", "cancel", "warning", "not available", "unavailable", "lost", NULL };
+    for (int i = 0; err[i]; i++) if (SDL_strcasestr(s, err[i])) return OL_ERROR;
+    for (int i = 0; warn[i]; i++) if (SDL_strcasestr(s, warn[i])) return OL_WARNING;
+    return OL_INFO;
+}
+
+/* Shows a[->status] for 6 s and records it in the application log: what the user saw is what
+ * the log says. Warnings and errors are logged as warnings. */
+static void status_show(App *a, int level) {
+    log_write(level >= OL_WARNING ? LOG_WARN : LOG_INFO, "status: %s", a->status);
+    a->status_until = SDL_GetTicks() + 6000;
+    app_wake_in(a, 6000);
+}
+
+/* See lume.h: status bar, log, and a note in the Output of the active session. */
 void app_status(App *a, const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
     vsnprintf(a->status, sizeof a->status, fmt, ap);
     va_end(ap);
-    bool bad = SDL_strcasestr(a->status, "failed") || SDL_strcasestr(a->status, "error") || SDL_strcasestr(a->status, "cannot");
-    log_write(bad ? LOG_WARN : LOG_INFO, "status: %s", a->status);
-    a->status_until = SDL_GetTicks() + 6000;
-    app_wake_in(a, 6000);
+    int level = status_level(a->status);
+    status_show(a, level);
+    output_note(a->output, a, NULL, level, a->status);
+}
+
+/* See lume.h: status bar and log only (the caller records the event in the Output itself). */
+void app_status_bar(App *a, const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(a->status, sizeof a->status, fmt, ap);
+    va_end(ap);
+    status_show(a, status_level(a->status));
+}
+
+/* See lume.h: like app_status with a stated level, noted on c's session (NULL = active). */
+void app_note(App *a, Connection *c, int level, const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(a->status, sizeof a->status, fmt, ap);
+    va_end(ap);
+    status_show(a, level);
+    output_note(a->output, a, c, level, a->status);
 }
 
 /* Ask the event loop to redraw within `ms` milliseconds (keeps the earliest pending request). */
@@ -270,7 +305,7 @@ bool app_connect(App *a, Connection *c) {
     }
     if (!c->db && !conn_connect(c)) {
         LOG_E("connect failed: %s (%s): %s", c->name, c->driver, c->error);
-        app_status(a, "%s: %s", c->name, c->error);
+        app_note(a, c, OL_ERROR, "%s: %s", c->name, c->error);
         explorer_rebuild(a->explorer, a);
         return false;
     }
@@ -283,7 +318,7 @@ bool app_connect(App *a, Connection *c) {
     if (!c->ro_level) c->ro_level = caps_apply_read_only(c);   /* TBR-013 */
     app_set_active(a, c);
     LOG_I("connected: %s (%s), %d tables", c->name, c->driver, c->ntables);
-    app_status(a, "Connected to %s", c->name);
+    app_note(a, c, OL_SUCCESS, "Connected to %s", c->name);
     return true;
 }
 
@@ -291,9 +326,9 @@ bool app_connect(App *a, Connection *c) {
 bool app_connect_async(App *a, Connection *c, bool reconnect) {
     if (!c) return false;
     if (c->db) { app_set_active(a, c); return true; }
-    if (!conn_connect_async(c, reconnect)) { app_status(a, "%s: %s", c->name, c->error[0] ? c->error : "already connecting"); return false; }
+    if (!conn_connect_async(c, reconnect)) { app_note(a, c, c->error[0] ? OL_ERROR : OL_INFO, "%s: %s", c->name, c->error[0] ? c->error : "already connecting"); return false; }
     LOG_I("%s %s (%s)", reconnect ? "reconnecting" : "connecting", c->name, c->driver);
-    app_status(a, "%s %s\xE2\x80\xA6", reconnect ? "Reconnecting to" : "Connecting to", c->name);
+    app_note(a, c, OL_INFO, "%s %s\xE2\x80\xA6", reconnect ? "Reconnecting to" : "Connecting to", c->name);
     explorer_rebuild(a->explorer, a);
     app_wake_in(a, 50);
     return true;
@@ -310,13 +345,13 @@ void app_poll_connections(App *a) {
             if (c->demo && c->ntables == 0) { ResultSet rs; c->db->drv->exec(c->db, c->demo == 2 ? demo_shop_sql : demo_sql, -1, 0, &rs); rs_free(&rs); conn_refresh(c); }
             c->ro_level = caps_apply_read_only(c);   /* TBR-013: as far as the engine allows */
             LOG_I("connected: %s (%s), %d tables", c->name, c->driver, c->ntables);
-            app_status(a, "Connected to %s", c->name);
+            app_note(a, c, OL_SUCCESS, "Connected to %s", c->name);
             if (a->pending_activate == c) { a->pending_activate = NULL; app_set_active(a, c); }   /* asked from the Explorer / a dialog */
             else if (a->panels) panels_connection_ready(a->panels, a, c);
         } else {
             if (a->pending_activate == c) a->pending_activate = NULL;
             LOG_E("connect failed: %s (%s): %s", c->name, c->driver, c->error);   /* the driver's message, never the location */
-            app_status(a, "%s: %s", c->name, c->error);
+            app_note(a, c, OL_ERROR, "%s: %s", c->name, c->error);
             if (a->toolbar && !c->demo) toolbar_connect_failed(a->toolbar, a, c);   /* hard to miss: a dialog, not only the status bar */
         }
         explorer_rebuild(a->explorer, a);
@@ -329,7 +364,7 @@ void app_poll_connections(App *a) {
  * fate, Lume does not claim it was committed (TBR-012 / 027). Refused while it is running. */
 bool app_reconnect(App *a, Connection *c) {
     if (!c) return false;
-    if (c->db && output_db_running(a->output, c->db)) { app_status(a, "%s is running a statement: stop it before reconnecting", c->name); return false; }
+    if (c->db && output_db_running(a->output, c->db)) { app_note(a, c, OL_WARNING, "%s is running a statement: stop it before reconnecting", c->name); return false; }
     bool was_active = a->active == c;
     if (c->db) {
         int tx = c->db->drv->tx_state ? c->db->drv->tx_state(c->db) : -1;
@@ -349,13 +384,13 @@ bool app_reconnect(App *a, Connection *c) {
 void app_disconnect(App *a, Connection *c) {
     if (!c) return;
     if (a->pending_activate == c) a->pending_activate = NULL;
-    if (c->attempt) { conn_cancel_connect(c); explorer_rebuild(a->explorer, a); app_status(a, "Connect to %s cancelled", c->name); return; }
+    if (c->attempt) { conn_cancel_connect(c); explorer_rebuild(a->explorer, a); app_note(a, c, OL_INFO, "Connect to %s cancelled", c->name); return; }
     bool was_active = a->active == c;
     results_release_db(a->results, c->db);
     conn_disconnect(c);
     if (was_active) { a->active = NULL; a->db = NULL; app_refresh_schema(a); set_title(a); }
     explorer_rebuild(a->explorer, a);
-    app_status(a, "Disconnected from %s", c->name);
+    app_note(a, c, OL_INFO, "Disconnected from %s", c->name);
 }
 
 /* Open the connection dialog for c, or for a new connection when c is NULL. */

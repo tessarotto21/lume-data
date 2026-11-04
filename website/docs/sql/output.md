@@ -13,6 +13,17 @@ The **Output** panel (**Cmd+3**, or **Query > Show Execution Output**, **Shift+C
 - States are written in words, not only colours. A cancelled execution is never shown as success.
 - While something runs, a banner shows the elapsed time and **Cancel**.
 
+## Lume messages
+
+Every message Lume shows in the status bar is also kept in the Output, marked **LUME**, with its time and level (information, success, warning or error). This way you can see later what happened, even after the status bar has changed: a connection that failed, a statement Lume refused, an export, a copy.
+
+- Messages about a connection (connecting, connected, a failed connect with the driver's message, disconnected) go to **that connection's** Output, even when another connection is active.
+- A statement Lume refuses before sending it (for example on a connection that is [Read-only in Lume](../connections/environments.md#read-only-in-lume)) appears as a **skipped** execution with the SQL and the reason.
+- The same message several times in a row is shown once with a count, for example "Copied 3 rows (×3)".
+- Only warnings and errors add to the badge on the Output's tab. A Lume message never brings the Output forward by itself.
+- The level filters and the search apply to these messages too. **Clear** removes them with the rest.
+- They are kept only while Lume is open: they are not part of the saved execution history.
+
 ## Errors
 
 An error shows the server's message and, when the database provides them, its code (SQLSTATE on PostgreSQL, ORA-nnnnn on Oracle, the extended code on SQLite), detail, hint and line / column. Next to it:

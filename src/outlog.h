@@ -21,7 +21,8 @@
 enum { OL_DEBUG, OL_INFO, OL_SUCCESS, OL_WARNING, OL_ERROR, OL_COUNT };
 /* Event types (OutEvent.type); names in outlog_type_name match the export schema. */
 enum { OT_EXEC_STARTED, OT_STMT_STARTED, OT_STMT_COMPLETED, OT_STMT_FAILED, OT_RESULT_SET, OT_ROWS_AFFECTED,
-       OT_DB_MESSAGE, OT_TX_CHANGED, OT_EXEC_CANCELLED, OT_EXEC_FINISHED, OT_UNKNOWN, OT_COUNT };
+       OT_DB_MESSAGE, OT_TX_CHANGED, OT_EXEC_CANCELLED, OT_EXEC_FINISHED, OT_UNKNOWN,
+       OT_NOTE /* a Lume message (what the status bar said), outside any execution */, OT_COUNT };
 /* Execution status (OutExec.status). COMPLETED / FAILED / CANCELLED / SKIPPED are terminal. */
 enum { ES_PENDING, ES_RUNNING, ES_CANCELLING, ES_COMPLETED, ES_FAILED, ES_CANCELLED, ES_SKIPPED, ES_COUNT };
 /* Transaction action an event reports (OutEvent.tx_action). */
@@ -61,6 +62,8 @@ typedef struct OutExec {
     int warnings, errors;            /* events at that level, excluding the closing summary */
     double ms;                       /* measured duration of the whole execution */
     bool partial;                    /* a cancelled statement kept a partial result set */
+    bool note;                       /* a Lume message (outlog_note): one OT_NOTE event, negative id, no header row */
+    int repeat;                      /* note: how many times the same message came in a row (1 = once) */
 } OutExec;
 
 /* The event log of one session (connection). */
@@ -71,6 +74,7 @@ typedef struct OutLog {
     OutExec *ex; int nex, capex;     /* executions, oldest first */
     uint64_t next_id; uint32_t next_seq;
     int next_exec;                   /* next ids to hand out */
+    int next_note;                   /* notes count down from -1, so execution numbers have no gaps */
     int max_events; long dropped_events, dropped_execs;   /* retention threshold and what it removed */
     long dedup_dropped, out_of_order;   /* ingest statistics: duplicates ignored, late events inserted */
 } OutLog;
@@ -92,6 +96,10 @@ void outlog_exec_status(OutLog *l, int exec_id, int status);   /* state machine:
 void outlog_exec_finish(OutLog *l, int exec_id, int status, double ms);   /* emits execution_finished / cancelled */
 /* generic event: the log fills id / seq / ts; returns the stored copy */
 OutEvent *outlog_push(OutLog *l, int exec_id, int stmt_id, int type, int level, const char *message);
+/* Records a Lume message (the status bar's text) as a note: its own finished record with a
+ * negative id and one OT_NOTE event at `level`. The same message at the same level right after
+ * the previous note bumps that note's counter ("(x3)") and time instead. Returns the note id. */
+int outlog_note(OutLog *l, int level, const char *message);
 /* Same with a copy of the statement text (len < 0 = NUL-terminated), its start offset in editor
  * revision rev (-1 = not from the editor). The returned pointer may be NULL and is valid only
  * until the next push. */

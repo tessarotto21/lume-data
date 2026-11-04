@@ -59,6 +59,14 @@ struct EditSet; struct ApplyResult;
 int output_obj_begin(Output *o, App *a, Connection *c, const char *title, int nstmts);
 void output_obj_event(Output *o, App *a, Connection *c, int exec_id, int stmt, int level, const char *msg, const char *sql);
 void output_obj_finish(Output *o, App *a, Connection *c, int exec_id, int status, double ms);
+/* A run Lume refused before sending anything (read-only check): an execution on c's session,
+ * status skipped, with the SQL and `why` as a warning, so the reason outlives the status bar. */
+int output_refused(Output *o, App *a, Connection *c, const char *sql, int len, const char *why);
+/* A Lume message (what the status bar said) kept as a note on c's session (NULL = the active
+ * one); level is OL_*. Only warnings and errors badge the Output; a note never opens it. */
+void output_note(Output *o, App *a, Connection *c, int level, const char *msg);
+/* Test harness: prints c's notes ("outnote LEVEL message") and their unseen count to stdout. */
+void output_notes_dump(Output *o, App *a, Connection *c);
 void output_record_apply(Output *o, App *a, Db *db, const char *table, const struct EditSet *e, int status, const struct ApplyResult *res, double ms);
 /* Writes the active log, with the current filters, to path: JSON (schema 1) when the path
  * ends in ".json", text otherwise. Secrets are redacted. Returns false on I/O error. */

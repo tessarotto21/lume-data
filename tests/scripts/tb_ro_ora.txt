@@ -1,0 +1,25 @@
+# TBR-029: an Oracle connection read-only in Lume (Lume check). A read whose string literals
+# contain DML words runs; a write is refused before anything is sent, and the refusal is kept
+# in the Output (skipped execution with the reason), not only in the status bar.
+wait 600
+button "tb:datasource"
+wait 150
+type "ora RO"
+key Return
+awaitconn "ora RO" 60000
+wait 300
+button "edtab:query.sql"
+key cmd+a
+type "WITH e AS (SELECT column_value AS k FROM TABLE(sys.odcivarchar2list('APP.T.C:UPDATE','APP.LOG:INSERT','APP.P:EXECUTE','SYS:CREATE SESSION'))) SELECT * FROM e"
+invoke sql.run
+wait 300
+outawait 60000
+tbstate
+key cmd+a
+type "UPDATE lume_ro_probe SET a = 1"
+invoke sql.run
+wait 300
+outawait 10000
+tbstate
+outexport build/tb-ro-ora/output.txt
+quit

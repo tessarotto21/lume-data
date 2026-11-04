@@ -39,9 +39,13 @@
 #include "theme.h"
 #include "ui.h"
 #include <ctype.h>
+#include <limits.h>
 #include <string.h>
 #include <time.h>
 #include "log.h"
+
+/* The Output's own status messages restate events it already records: status bar only. */
+#define app_status app_status_bar
 
 /* Most connections that keep their own log at once; the oldest is recycled past this. */
 #define OUT_MAX_SESSIONS 16
@@ -195,13 +199,15 @@ bool output_text_focus(Output *o) { return o->search_focus; }
 void output_find(Output *o) { o->search_focus = true; o->search.blink = SDL_GetTicks(); }
 
 /* Warnings + errors in executions not yet marked seen (tab badge); *errors gets errors only. */
-int output_unseen(Output *o, App *a, int *errors) {
-    OutLog *l = output_current(o, a);
+/* Warnings and errors of executions (and notes) of l not yet looked at; errors in *errors. */
+static int unseen_count(const OutLog *l, int *errors) {
     int n = 0, e = 0;
     for (int i = 0; i < l->nex; i++) if (!l->ex[i].seen) { n += l->ex[i].warnings + l->ex[i].errors; e += l->ex[i].errors; }
     if (errors) *errors = e;
     return n;
 }
+static int unseen_in(const OutLog *l) { return unseen_count(l, NULL); }
+int output_unseen(Output *o, App *a, int *errors) { return unseen_count(output_current(o, a), errors); }
 /* Clears the badge: marks every execution of the active log as seen. */
 void output_mark_seen(Output *o, App *a) { OutLog *l = output_current(o, a); for (int i = 0; i < l->nex; i++) l->ex[i].seen = true; }
 /* Shows the Output tab, clears the execution filter and scrolls to exec_id's header on the
@@ -634,10 +640,14 @@ static void rebuild(Output *o, App *a, const OutLog *l, float width) {
     o->nrows = 0;
     /* Group events by execution: a header row per execution, then its events that pass the
      * filters (collapsed groups only count their hidden events). */
-    int last_exec = -1, head = -1; bool collapsed = false, skip = false;
+    int last_exec = INT_MIN, head = -1; bool collapsed = false, skip = false;
     for (int i = 0; i < l->n; i++) {
         const OutEvent *e = &l->ev[i];
         if (o->frozen && e->id > o->frozen_id) continue;     /* Pause view: newer events wait */
+        if (e->type == OT_NOTE) {   /* a Lume message: one row of its own, outside the grouping (it may land inside a running execution) */
+            if ((!o->exec_filter || e->exec_id == o->exec_filter) && pass(o, e)) push_row(o, 1, e->exec_id, i);
+            continue;
+        }
         if (e->exec_id != last_exec) {
             last_exec = e->exec_id;
             OutExec *x = outlog_exec((OutLog *)l, e->exec_id);
@@ -993,6 +1003,7 @@ static const char *type_label(const OutEvent *e) {
     case OT_TX_CHANGED: return "TRANSACTION";
     case OT_EXEC_CANCELLED: return "CANCELLED";
     case OT_EXEC_FINISHED: return e->level == OL_ERROR ? "FAILED" : "FINISHED";
+    case OT_NOTE: return "LUME";
     default: return "EVENT";
     }
 }
@@ -1042,15 +1053,15 @@ static void tv_build(Output *o, OutLog *l) {
     char *b = NULL; size_t w = 0, cap = 0; tv_add(&b, &w, &cap, "");
     OutFilter f = { o->levels == (1u << OL_COUNT) - 1 ? 0 : o->levels, o->exec_filter, o->search.buf, false };
     char line[5200], red[4200], ts[32], dur[32];
-    int last_exec = -1;
+    int last_exec = INT_MIN;
     for (int i = 0; i < l->n; i++) {
         const OutEvent *e = &l->ev[i];
         if (o->frozen && e->id > o->frozen_id) continue;
         if (e->type == OT_EXEC_STARTED) continue;
         if (!outlog_visible(l, e, &f)) continue;
-        if (e->exec_id != last_exec) {
+        if (e->exec_id != last_exec && e->type != OT_NOTE) {   /* notes print as plain lines, no execution header */
             OutExec *x = outlog_exec(l, e->exec_id);
-            if (last_exec != -1) tv_add(&b, &w, &cap, "\n");
+            if (last_exec != INT_MIN) tv_add(&b, &w, &cap, "\n");
             tv_ts(x ? x->started : e->ts, ts, sizeof ts, false);
             char sum[300]; outlog_redact(x && x->summary ? x->summary : "", sum, sizeof sum);
             if (x && x->ms > 0) snprintf(dur, sizeof dur, " \xC2\xB7 %.0f ms", x->ms); else dur[0] = 0;
@@ -1784,6 +1795,34 @@ void output_obj_event(Output *o, App *a, Connection *c, int x, int stmt, int lev
 void output_obj_finish(Output *o, App *a, Connection *c, int x, int status, double ms) {
     outlog_exec_finish(obj_log(o, a, c), x, status, ms);
     o->dirty = true;
+}
+void output_note(Output *o, App *a, Connection *c, int level, const char *msg) {
+    if (!o || !msg || !msg[0]) return;
+    outlog_note(obj_log(o, a, c), level, msg);
+    o->dirty = true;
+}
+void output_notes_dump(Output *o, App *a, Connection *c) {
+    OutLog *l = obj_log(o, a, c);
+    int n = 0;
+    for (int i = 0; i < l->n; i++) {
+        const OutEvent *e = &l->ev[i];
+        if (e->type != OT_NOTE) continue;
+        char red[600]; outlog_redact(e->message, red, sizeof red);
+        printf("outnote %s %s\n", outlog_level_name(e->level), red); n++;
+    }
+    printf("outnotes %d in %s (unseen warnings/errors: %d)\n", n, l->session_name, unseen_in(l));
+    fflush(stdout);
+}
+int output_refused(Output *o, App *a, Connection *c, const char *sql, int len, const char *why) {
+    if (!o) return 0;
+    OutLog *l = obj_log(o, a, c);
+    int x = outlog_exec_begin(l, sql ? sql : "", sql ? len : 0, 0, -1);
+    OutExec *xe = outlog_exec(l, x);
+    if (xe) { xe->nstmts = 1; xe->skipped = 1; }
+    outlog_push(l, x, 0, OT_DB_MESSAGE, OL_WARNING, why);
+    outlog_exec_finish(l, x, ES_SKIPPED, 0);
+    o->dirty = true;
+    return x;
 }
 
 /* Cmd+C with text selected in the text view: the selection goes to the clipboard (true when copied) */

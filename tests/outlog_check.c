@@ -127,6 +127,32 @@ int main(void) {
     check(xs == big.nex && wa == big.nex, "counters reflect retained executions only", NULL);
     outlog_free(&big);
 
+    /* notes: Lume's status messages kept as a record (outside executions) */
+    OutLog nl; outlog_init(&nl, 9, "Notes");
+    int n1 = outlog_note(&nl, OL_ERROR, "db1: connection refused");
+    int xr = outlog_exec_begin(&nl, "SELECT 1", -1, 0, 0);
+    int n2 = outlog_note(&nl, OL_INFO, "Copied 3 rows");
+    int n2b = outlog_note(&nl, OL_INFO, "Copied 3 rows");
+    outlog_exec_finish(&nl, xr, ES_COMPLETED, 1.0);
+    int n3 = outlog_note(&nl, OL_INFO, "Copied 3 rows");
+    int n4 = outlog_note(&nl, OL_INFO, "Copied 3 rows");
+    int n4b = outlog_note(&nl, OL_INFO, "Copied 3 rows");
+    OutExec *nx1 = outlog_exec(&nl, n1), *nx2 = outlog_exec(&nl, n2), *nx3 = outlog_exec(&nl, n3);
+    check(n1 == -1 && n2 == -2 && xr == 1 && nx1 && nx1->note && nx1->status == ES_COMPLETED, "notes take negative ids: execution numbers have no gaps", NULL);
+    check(n2b == n2 && nx2 && nx2->repeat == 2, "the same message right after a note bumps it (a note inside a running execution too)", NULL);
+    check(n3 == -3 && n4 == n3 && n4b == n3 && nx3 && nx3->repeat == 3, "after other events the same message is a new note (the list stays in time order)", NULL);
+    const OutEvent *ne = NULL; for (int i = 0; i < nl.n; i++) if (nl.ev[i].exec_id == n3) ne = &nl.ev[i];
+    check(ne && ne->type == OT_NOTE && strstr(ne->message, "Copied 3 rows (\xC3\x97" "3)") && !strcmp(outlog_type_name(OT_NOTE), "lume_message"), "a repeated note shows its count", ne ? ne->message : NULL);
+    int n5 = outlog_note(&nl, OL_WARNING, "Copied 3 rows");
+    check(n5 == -4, "the same text at another level is a new note", NULL);
+    check(nx1->errors == 1 && nx1->warnings == 0 && outlog_exec(&nl, n5)->warnings == 1 && nx3->warnings == 0 && nx3->errors == 0, "only warning / error notes count for the badge", NULL);
+    char *nt = outlog_event_text(&nl, &nl.ev[0], true);
+    check(nt && strstr(nt, "error    db1: connection refused") && strstr(nt, "type: lume_message") && !strstr(nt, "execution: #"), "a note exports as a plain message, without an execution number", nt);
+    free(nt);
+    outlog_clear(&nl);
+    check(nl.n == 0 && outlog_note(&nl, OL_INFO, "after clear") == -5, "Clear drops notes; ids keep counting down", NULL);
+    outlog_free(&nl);
+
     printf("%s (%d failures)\n", failures ? "OUTLOG: FAIL" : "OUTLOG: OK", failures);
     return failures ? 1 : 0;
 }

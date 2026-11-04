@@ -177,8 +177,15 @@ typedef struct App {
 /* UI points -> render pixels. */
 static inline float px(const App *a, float pt) { return pt * a->scale; }
 
-/* printf-style status bar message, shown for 6 s and written to the log. */
+/* printf-style status bar message, shown for 6 s, written to the log and kept as a note in the
+ * Output of the active session, so it stays as a record after the bar changes. The level is
+ * read from the text (failed / error: error; not run / refused / cancelled: warning; else info). */
 void app_status(App *a, const char *fmt, ...);
+/* Same with a stated level (OL_* in outlog.h), noted on c's session (NULL = the active one):
+ * messages about a given connection (connect, failure, disconnect) land in its own Output. */
+void app_note(App *a, Connection *c, int level, const char *fmt, ...);
+/* Status bar and log only: for text the caller already records in the Output itself. */
+void app_status_bar(App *a, const char *fmt, ...);
 /* Request a redraw within ms milliseconds even without input (blinking caret, timers). */
 void app_wake_in(App *a, Uint32 ms);
 /* Runs SQL synchronously on the active connection into the editor's result tab. */

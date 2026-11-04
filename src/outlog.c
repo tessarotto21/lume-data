@@ -39,7 +39,7 @@ const char *outlog_level_name(int l) { static const char *const n[] = { "debug",
 /* Event type names as used in the JSON export. */
 const char *outlog_type_name(int t) {
     static const char *const n[] = { "execution_started", "statement_started", "statement_completed", "statement_failed", "result_set_created", "rows_affected",
-                                     "database_message", "transaction_changed", "execution_cancelled", "execution_finished", "unknown" };
+                                     "database_message", "transaction_changed", "execution_cancelled", "execution_finished", "unknown", "lume_message" };
     return t >= 0 && t < OT_COUNT ? n[t] : "unknown";
 }
 /* Execution status names. */
@@ -50,7 +50,7 @@ void outlog_init(OutLog *l, int session, const char *name) {
     memset(l, 0, sizeof *l);
     l->session = session;
     snprintf(l->session_name, sizeof l->session_name, "%s", name ? name : "");
-    l->next_id = 1; l->next_seq = 1; l->next_exec = 1;
+    l->next_id = 1; l->next_seq = 1; l->next_exec = 1; l->next_note = -1;
     l->max_events = OUTLOG_DEFAULT_MAX_EVENTS;
 }
 
@@ -151,6 +151,32 @@ static OutEvent *append(OutLog *l, OutEvent *e) {
     return NULL;
 }
 
+/* See outlog.h. */
+int outlog_note(OutLog *l, int level, const char *message) {
+    if (!message) message = "";
+    /* only a repeat right after the same note (nothing recorded between) is folded in */
+    if (l->nex > 0 && l->ex[l->nex - 1].note && !strcmp(l->ex[l->nex - 1].summary, message) && l->n > 0 && l->ev[l->n - 1].exec_id == l->ex[l->nex - 1].id) {
+        OutExec *p = &l->ex[l->nex - 1];
+        for (int k = l->n - 1; k >= 0; k--) {
+            OutEvent *e = &l->ev[k];
+            if (e->exec_id != p->id || e->level != level) continue;
+            p->repeat++; p->finished = now_s(); e->ts = p->finished;
+            char *m = NULL; size_t n = strlen(message) + 32;
+            if ((m = malloc(n))) { snprintf(m, n, "%s (\xC3\x97%d)", message, p->repeat); free(e->message); e->message = m; }
+            return p->id;
+        }
+    }
+    if (l->nex == l->capex) { l->capex = l->capex ? l->capex * 2 : 32; l->ex = realloc(l->ex, sizeof *l->ex * l->capex); }
+    OutExec *x = &l->ex[l->nex++];
+    memset(x, 0, sizeof *x);
+    x->id = l->next_note--; x->session = l->session; x->status = ES_COMPLETED; x->started = x->finished = now_s();
+    x->note = true; x->repeat = 1;
+    x->summary = strdup(message);
+    int id = x->id;   /* outlog_push may run retention, which moves the executions array */
+    outlog_push(l, id, 0, OT_NOTE, level, message);
+    return id;
+}
+
 /* See outlog.h. Opens a new running execution with a one-line summary of sql and emits its
  * execution_started event (carrying the SQL and editor position). Returns the execution id. */
 int outlog_exec_begin(OutLog *l, const char *sql, int len, uint32_t editor_rev, int sql_start) {
@@ -189,7 +215,7 @@ void outlog_exec_finish(OutLog *l, int exec_id, int status, double ms) {
     } else {
         snprintf(msg, sizeof msg, "%d of %d statement%s ok \xC2\xB7 %d failed \xC2\xB7 %d not run",
                  x->ok, x->nstmts, x->nstmts == 1 ? "" : "s", x->failed, x->skipped);
-        OutEvent *e = outlog_push(l, exec_id, 0, OT_EXEC_FINISHED, status == ES_FAILED ? OL_ERROR : OL_SUCCESS, msg);
+        OutEvent *e = outlog_push(l, exec_id, 0, OT_EXEC_FINISHED, status == ES_FAILED ? OL_ERROR : status == ES_SKIPPED ? OL_WARNING : OL_SUCCESS, msg);   /* a refused run is not a success */
         if (e) e->exec_ms = ms;
     }
 }
@@ -241,7 +267,10 @@ bool outlog_ingest(OutLog *l, const OutEvent *src) {
         if (l->nex == l->capex) { l->capex = l->capex ? l->capex * 2 : 32; l->ex = realloc(l->ex, sizeof *l->ex * l->capex); }
         OutExec *x = &l->ex[l->nex++]; memset(x, 0, sizeof *x);
         x->id = e.exec_id; x->session = l->session; x->status = ES_RUNNING; x->started = e.ts; x->summary = strdup(e.sql ? e.sql : e.message ? e.message : "");
-        if (e.exec_id >= l->next_exec) l->next_exec = e.exec_id + 1;
+        if (e.type == OT_NOTE && e.exec_id < 0) {   /* a note: finished on arrival */
+            x->note = true; x->repeat = 1; x->status = ES_COMPLETED; x->finished = e.ts;
+            if (e.exec_id <= l->next_note) l->next_note = e.exec_id - 1;
+        } else if (e.exec_id >= l->next_exec) l->next_exec = e.exec_id + 1;
     }
     append(l, &e);
     return true;
@@ -355,7 +384,8 @@ char *outlog_event_text(const OutLog *l, const OutEvent *e, bool details) {
     outlog_redact(e->message, red, sizeof red);
     tb_printf(&b, "%s  %-7s  %s", ts, outlog_level_name(e->level), red);
     if (!details) return b.s;
-    tb_printf(&b, "\n  type: %s  execution: #%d%s  seq: %u", outlog_type_name(e->type), e->exec_id, e->stmt_id ? "" : "", e->seq);
+    if (e->type == OT_NOTE) tb_printf(&b, "\n  type: %s  seq: %u", outlog_type_name(e->type), e->seq);   /* a note belongs to no execution */
+    else tb_printf(&b, "\n  type: %s  execution: #%d%s  seq: %u", outlog_type_name(e->type), e->exec_id, e->stmt_id ? "" : "", e->seq);
     if (e->stmt_id) tb_printf(&b, "  statement: %d", e->stmt_id);
     if (e->sql) { outlog_redact(e->sql, red, sizeof red); tb_printf(&b, "\n  sql: %s%s", red, e->sql_truncated ? " \xE2\x80\xA6(truncated)" : ""); }
     char dur[24];
